@@ -6,6 +6,7 @@
   "Read puzzle input from file."
   (uiop:read-file-lines path))
 
+
 (defun calories-per-elf (input)
   "Sum calories by elf into list of integers. New elf when blank input is found."
   (let* ((cals-per-elf (iter
@@ -30,5 +31,4 @@
   "Solve part 1 and part 2 of AoC 2022 day 1."
   (let* ((cals-per-elf (calories-per-elf (get-input #P"./input"))))
     (format t "First part: ~a~%" (first cals-per-elf))
-    (format t "Second part: ~a~%" (reduce #'+ (first-n-elems cals-per-elf 3)))
-    ))
+    (format t "Second part: ~a~%" (reduce #'+ (first-n-elems cals-per-elf 3)))))
