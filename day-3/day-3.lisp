@@ -1,10 +1,11 @@
-;;;; Problem_3.lisp
+;;;; day-3.lisp
 
-(in-package #:Problem_3)
+(in-package #:day-3)
 
 (defun get-input (path)
   "Read puzzle input from path, return as list of lines."
   (uiop:read-file-lines path))
+
 
 (defun rucksack-sets (item-string)
   "Split item-string in half and convert to two sets of characters."
@@ -49,9 +50,11 @@
     (cond (in-range-1-p (+ 26 (- character-code 64)))  ;; A -> Z
           (in-range-2-p (- character-code 96)))))      ;; a -> z
 
+
 (defun items-to-priorities (items)
   "Convert items (characters) to respective priority integer."
   (mapcar #'item-to-value items))
+
 
 (defun main ()
   "Solve part 1 and part 2 of AoC 2022 day 3."

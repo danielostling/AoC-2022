@@ -1,4 +1,4 @@
 ;;;; package.lisp
 
-(defpackage #:Problem_3
+(defpackage #:day-1
   (:use #:cl #:iter))

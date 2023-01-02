@@ -1,6 +1,6 @@
-;;;; Problem_1.lisp
+;;;; day-1.lisp
 
-(in-package #:Problem_1)
+(in-package #:day-1)
 
 (defun get-input (path)
   "Read puzzle input from path, return as list of lines."

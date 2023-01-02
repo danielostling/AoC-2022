@@ -1,7 +1,7 @@
-;;;; Problem_2.lisp
+;;;; day-2.lisp
 ;;; Rather naïve solution, I'm afraid.
 
-(in-package #:Problem_2)
+(in-package #:day-2)
 
 
 (defun get-input (path)
