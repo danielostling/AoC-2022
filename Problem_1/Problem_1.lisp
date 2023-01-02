@@ -3,7 +3,7 @@
 (in-package #:Problem_1)
 
 (defun get-input (path)
-  "Read puzzle input from file."
+  "Read puzzle input from path, return as list of lines."
   (uiop:read-file-lines path))
 
 
