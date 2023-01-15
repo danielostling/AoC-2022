@@ -2,13 +2,16 @@
 
 (in-package #:day-3)
 
+(declaim (optimize (speed 0) (safety 3) (debug 3)))
+
+
 (defun get-input (path)
   "Read puzzle input from path, return as list of lines."
   (uiop:read-file-lines path))
 
 
-(defun rucksack-sets (item-string)
-  "Split item-string in half and convert to two sets of characters."
+(defun make-rucksack-compartments (item-string)
+  "Split item-string in half and convert to two lists of characters."
   (let* ((item-string-length (length item-string))
          (compartment-string-length (/ item-string-length 2))
          (first-compartment (coerce
@@ -26,14 +29,15 @@
     (values first-compartment second-compartment)))
 
 
-(defun find-duplicate-items (set1 set2)
-  "Return list of items which are only in one of the sets."
-  (append
-   (set-difference set1 set2 :test #'string=)
-   (set-difference set2 set1 :test #'string=)))
+(defun find-duplicate-items (list1 list2)
+  "Return list of items which are only in one of the lists.
+   Why both intersect and remove-duplicates? Function intersect
+   will return duplicates in some cases, for example
+   (intersection '(#\h #\h #\h) '(#\a #\b #\c #\h))"
+  (remove-duplicates (intersection list1 list2) :test #'equal))
 
 
-(defun item-to-value (item)
+(defun item-to-priority (item)
   "Given an item, return its integer priority value.
 
   - Lowercase item types a through z have priorities 1 through 26.
@@ -53,12 +57,66 @@
 
 (defun items-to-priorities (items)
   "Convert items (characters) to respective priority integer."
-  (mapcar #'item-to-value items))
+  (mapcar #'item-to-priority items))
+
+
+(defun rucksack-string-to-priority (rucksack-string)
+  "Given a rucksack item string, return its priority value."
+  (multiple-value-bind (compartment1-items compartment2-items)
+      (make-rucksack-compartments rucksack-string)
+    (reduce #'+ (items-to-priorities (find-duplicate-items
+                                      compartment1-items
+                                      compartment2-items)))))
+
+
+(defun count-by-hash (h elem)
+  "Destructively add item elem to hash h and increase it's count (the value) by one."
+  (multiple-value-bind (val present) (gethash elem h)
+    (cond
+      ((null present) (setf (gethash elem h) 1))
+      (t (setf (gethash elem h) (1+ val))))))
+
+
+(defun find-common-items (item-strings)
+  "Return items shared by all item strings in given list."
+  (let* ((n-item-strings (length item-strings))
+         (item-count (make-hash-table)))
+    (iter
+      (for item-string in item-strings)
+      (for item-codes = (remove-duplicates (coerce item-string 'list) :test #'equal))
+      (iter
+        (for item-code in item-codes)
+        (count-by-hash item-count item-code)))
+    (iter
+      (for (item-code count) in-hashtable item-count)
+      (when (= count n-item-strings)
+        (collect item-code)))))
+
+
+(defun item-type-by-group (rucksack-item-strings)
+  "Find item type common to each group."
+  (iter
+    (for (elf1 elf2 elf3) on rucksack-item-strings by #'cdddr)
+    (for common-items = (find-common-items (list elf1 elf2 elf3)))
+    (appending common-items)))
+
+
+(defun solve-part-1 (input)
+  "Solve part 1."
+  (iter
+    (for rucksack-string in input)
+    (summing (rucksack-string-to-priority rucksack-string))))
+
+
+(defun solve-part-2 (input)
+  "Solve part 2."
+  (reduce #'+ (items-to-priorities (item-type-by-group input))))
 
 
 (defun main ()
   "Solve part 1 and part 2 of AoC 2022 day 3."
-  ;; (let* ((cals-per-elf (calories-per-elf (get-input #P"./input"))))
-  ;;   (format t "First part: ~a~%" (first cals-per-elf))
-  ;;   (format t "Second part: ~a~%" (reduce #'+ (first-n-elems cals-per-elf 3))))
-  )
+  (let* ((rucksack-strings (get-input #P"./input"))
+         (part-1 (solve-part-1 rucksack-strings))
+         (part-2 (solve-part-2 rucksack-strings)))
+    (format t "First part: ~a~%" part-1)
+    (format t "Second part: ~a~%" part-2)))
