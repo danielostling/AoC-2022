@@ -1,6 +1,6 @@
 Common Lisp solutions to Advent of Code 2022
 
-If you put these systems into a directory not in ~/quicklisp/local-projects, you can use the following to get quicklisp to pick it up.
+If you put these systems into a directory other than ~/quicklisp/local-projects, you can use the following to get quicklisp to pick it up.
 
 In Emacs/Sly or Emacs/Slime (or in SBCL for that matter):
 ```
