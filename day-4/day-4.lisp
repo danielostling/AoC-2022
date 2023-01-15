@@ -12,7 +12,6 @@
    return list of corresponding integers
    (elf1-low elf1-high elf2-low elf2-high). In example above
    return (31 57 30 58)."
-
   (let ((parts (uiop:split-string raw-section-string :separator '(#\- #\,))))
     (mapcar #'parse-integer parts)))
 
@@ -24,7 +23,6 @@
   
    (0 3 4 7) => NIL
    (4 8 0 12) => T (first range contained in second range)"
-
   (flet ((range-contained-p (min1 max1 min2 max2)
            "Return T if integer range min2 -> max2 is contained within integer
             range min1 -> max1, otherwise return NIL."
@@ -70,7 +68,6 @@
     Edge cases
     - min and/or max values are same
     - one range wholly contains the other range."
-
   (flet ((range-overlaps-p (min1 max1 min2 max2)
            "Return T if integer range min2-max2 overlaps integer range
             min1-max1, otherwise return NIL."
@@ -113,5 +110,4 @@
          (part-1 (solve-part-1 raw-section-assignments))
          (part-2 (solve-part-2 raw-section-assignments)))
     (format t "First part: ~a~%" part-1)
-    (format t "Second part: ~a~%" part-2))
-  )
+    (format t "Second part: ~a~%" part-2)))
