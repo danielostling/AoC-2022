@@ -2,8 +2,6 @@
 
 (in-package #:day-3)
 
-(declaim (optimize (speed 0) (safety 3) (debug 3)))
-
 
 (defun get-input (path)
   "Read puzzle input from path, return as list of lines."
