@@ -32,7 +32,7 @@
    Why both intersect and remove-duplicates? Function intersect
    will return duplicates in some cases, for example
    (intersection '(#\h #\h #\h) '(#\a #\b #\c #\h))"
-  (remove-duplicates (intersection list1 list2) :test #'equal))
+  (remove-duplicates (intersection list1 list2 :test #'equal) :test #'equal))
 
 
 (defun item-to-priority (item)
