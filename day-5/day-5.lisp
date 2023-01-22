@@ -102,13 +102,14 @@
                      (remove-if #'alpha-char-p raw-move-string)))
                   (move-str-list (remove-if #'empty-string-p raw-move-str-list)))
              (mapcar #'parse-integer move-str-list))))
-    (let* ((raw-move-strings (iter
-                               (for line in input)
-                               (if (and
-                                    (>= (length line) 5)
-                                    (string= (subseq line 0 5) "move "))
-                                   (collect line)
-                                   (next-iteration)))))
+    (let ((raw-move-strings
+            (iter
+              (for line in input)
+              (if (and
+                   (>= (length line) 5)
+                   (string= (subseq line 0 5) "move "))
+                  (collect line)
+                  (next-iteration)))))
       (mapcar #'make-move raw-move-strings))))
 
 
