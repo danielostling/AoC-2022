@@ -91,8 +91,13 @@
         (let ((looking-left (reverse row-left))
               (looking-right row-right)
               (looking-up (reverse col-left))
-              (looking-down col-right))
-          
+              (looking-down col-right)
+              (score 1))
+          (iter
+            (for viewing-distance from 0 below (length looking-left))
+            (for viewed-tree-hight = (nth viewing-distance looking-left))
+            ()
+            )
 
 
           )))
