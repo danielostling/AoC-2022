@@ -8,7 +8,7 @@
 
 
 (defun list-of-strings-to-array (strings)
-  "Convert list of `strings` to array."
+  "Convert list of `strings` of single-digit integers to array."
   (let* ((width (length (first strings)))
          (height (length strings))
          (numbers (reverse
