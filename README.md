@@ -1,5 +1,7 @@
 Common Lisp solutions to Advent of Code 2022
 
+Don't expect perfect code here. I'm still a beginner common lisp coder :)
+
 If you put these systems into a directory other than ~/quicklisp/local-projects, you can use the following to get quicklisp to pick it up.
 
 In Emacs/Sly or Emacs/Slime (or in SBCL for that matter):
