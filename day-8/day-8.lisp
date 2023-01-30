@@ -8,7 +8,7 @@
 
 
 (defun list-of-strings-to-array (strings)
-  "Convert list of strings to array."
+  "Convert list of `strings` to array."
   (let* ((width (length (first strings)))
          (height (length strings))
          (numbers (reverse
@@ -42,8 +42,9 @@
   (delete-if (constantly t) (copy-seq seq) :start n :count 1))
 
 
-(defun partition (seq n)
-  "Split `seq` at index `n` and return ((left-elements) (right-elements))."
+(defun partition-ish (seq n)
+  "Split `seq` at index `n` and return ((left-elements) (right-elements)),
+   leaving out the `n`th element."
   (let ((left (subseq seq 0 n))
         (right (subseq seq (1+ n))))
     (list left right)))
@@ -59,8 +60,8 @@
          (member col-idx (list 0 (1- (length col)))))
         t
         (progn
-          (destructuring-bind (row-left row-right) (partition row col-idx)
-            (destructuring-bind (col-left col-right) (partition col row-idx)
+          (destructuring-bind (row-left row-right) (partition-ish row col-idx)
+            (destructuring-bind (col-left col-right) (partition-ish col row-idx)
               (or
                (> tree-value (apply #'max row-left))
                (> tree-value (apply #'max row-right))
@@ -81,28 +82,28 @@
     visible-trees))
 
 
-(defun scenic-score (row col arr)
-  "Calculate scenic score at position (`row` `col`) in `arr`."
-  (let* ((tree-value (aref arr row-idx col-idx))
+(defun scenic-score (row-idx col-idx arr)
+  "Calculate scenic score at position (`row-idx` `col-idx`) in `arr`."
+  (let* ((candidate-tree-height (aref arr row-idx col-idx))
          (row (get-row-from-array row-idx arr))
          (col (get-col-from-array col-idx arr)))
-    (destructuring-bind (row-left row-right) (partition row col-idx)
-      (destructuring-bind (col-left col-right) (partition col row-idx)
-        (let ((looking-left (reverse row-left))
-              (looking-right row-right)
-              (looking-up (reverse col-left))
-              (looking-down col-right)
-              (score 1))
-          (iter
-            (for viewing-distance from 0 below (length looking-left))
-            (for viewed-tree-hight = (nth viewing-distance looking-left))
-            ()
-            )
-
-
-          )))
-    )  
-  )
+    (destructuring-bind (row-left row-right) (partition-ish row col-idx)
+      (destructuring-bind (col-left col-right) (partition-ish col row-idx)
+        (let* ((looking-left (reverse row-left))
+               (looking-right row-right)
+               (looking-up (reverse col-left))
+               (looking-down col-right)
+               (views (list looking-up looking-right looking-down looking-left)))
+          (iter outer
+            (for view in views)
+            (for scenic-part =
+                 (iter
+                   (for viewing-distance from 0 below (length view))
+                   (for viewed-tree-height = (nth viewing-distance view))
+                   (when (>= viewed-tree-height candidate-tree-height)
+                     (leave (1+ viewing-distance)))
+                   (maximize (1+ viewing-distance))))
+            (multiply scenic-part)))))))
 
 
 (defun get-scenic-score (arr)
@@ -126,8 +127,7 @@
 
 (defun solve-part-2 (arr)
   "Solve part 2."
-  (declare (ignorable arr))
-  "Part 2 TBD")
+  (get-scenic-score arr))
 
 
 (defun main ()
