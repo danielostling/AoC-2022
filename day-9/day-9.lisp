@@ -18,7 +18,15 @@
 (defun calculate-tail-move (head-pos tail-pos)
   "Based on `head-pos` (x y) and `tail-pos` (i j), figure out where
    to move tail. If no change is needed, return `tail-pos`.
-   This is a pretty naïve solution, I'm afraid but it gets the job done."
+   I'm afraid this is rather naïve solution, but it gets the job done.
+
+   Head-Tail relation cases, where tail is initially at X in center, and head is
+   at positions 1-7 or A-D.
+   A 6 4 6 B
+   7 1 1 1 7
+   3 1 X 1 2
+   7 1 1 1 7
+   D 6 5 6 C"
   (flet ((one-step-behind (i)
            "Return 1 if `i` is negative integer, else -1."
            (if (minusp i) 1 -1)))
@@ -28,103 +36,67 @@
            (tail-y (second tail-pos))
            (distance-x (abs (- head-x tail-x)))
            (distance-y (abs (- head-y tail-y))))
-
- ;;; Cases
- ;;;   6 4 6
- ;;; 7 1 1 1 7
- ;;; 3 1 X 1 2
- ;;; 7 1 1 1 7
- ;;;   6 5 6
-      (cond ((and (<= distance-x 1) (<= distance-y 1)) tail-pos) ;; case 1
-            ((and (= head-y tail-y) (> head-x tail-x))           ;; case 2
+      (cond ((and (<= distance-x 1) (<= distance-y 1)) tail-pos) ;; Case 1
+            ((and (= head-y tail-y) (> head-x tail-x))           ;; Case 2
              (list (1- head-x) tail-y)) 
-            ((and (= head-y tail-y) (< head-x tail-x))           ;; case 3
+            ((and (= head-y tail-y) (< head-x tail-x))           ;; Case 3
              (list (1+ head-x) tail-y))
-            ((and (= head-x tail-x) (> head-y tail-y))           ;; case 4
+            ((and (= head-x tail-x) (> head-y tail-y))           ;; Case 4
              (list tail-x (1- head-y)))
-            ((and (= head-x tail-x) (< head-y tail-y))           ;; case 5
+            ((and (= head-x tail-x) (< head-y tail-y))           ;; Case 5
              (list tail-x (1+ head-y)))
-            ((= distance-y 2)                                    ;; case 6
+            ((and (= distance-x 2) (= distance-y 2))             ;; Move diag.
+             (cond ((and (< head-x tail-x) (> head-y tail-y))
+                    (list (1+ head-x) (1- head-y)))              ;; Case A
+                   ((and (> head-x tail-x) (> head-y tail-y))
+                    (list (1- head-x) (1- head-y)))              ;; Case B
+                   ((and (> head-x tail-x) (< head-y tail-y))
+                    (list (1- head-x) (1+ head-y)))              ;; Case C
+                   ((and (< head-x tail-x) (< head-y tail-y))
+                    (list (1+ head-x) (1+ head-y)))))            ;; Case D
+            ((= distance-y 2)                                   ;; Case 6
              (list head-x (+ head-y (one-step-behind (- head-y tail-y)))))
-            ((= distance-x 2)                                    ;; case 7
+            ((= distance-x 2)                                   ;; Case 7
              (list (+ head-x (one-step-behind (- head-x tail-x))) head-y))))))
 
 
-(defun walk-steps (steps)
-  "Go through the steps in the rope simulation. `steps` is a list of
-  (direction stepcount) pairs, where direction is one of #\U #\L #\R #\D and
-  stepcount is a positive integer. Collect all positions tail part of rope
-  passes and return the (unique) list of (x y) positions, where x and y are
-  integers. Start out with head and tail at same position, (0 0), which is in
-  the lower left corner of a coordinate system."
-  (let* ((head-pos '(0 0))
-         (tail-pos '(0 0))
-         (visited-positions '((0 0))))
+(defun walk-steps (steps &optional (knots 2))
+  "Go through the steps in the rope simulation.
+
+  `steps` is a list of (direction stepcount) pairs, where direction is one of
+  #\U #\L #\R #\D and stepcount is a positive integer.
+
+  `knots` is an integer denoting how many positions to keep track of. Two knots
+  is one head and one tail. The knots will move using the previous knot as local
+  head.
+
+  Collect all positions tail knot of the rope passes and return the (unique)
+  list of the tail knot (x y) positions, where x and y are integers. Start out
+  with all knots at the same position, (0 0) in this simulation."
+  (let ((knot-positions (iter
+                          (for knot from 1 to knots)
+                          (collect '(0 0))))
+        (visited-positions '((0 0))))
     (iter
       (for (direction stepcount) in steps)
+      (for move-line first 1 then (1+ move-line))
       (iter
         (for steps-taken from 1 to stepcount)
-        (for (head-x head-y) = head-pos)
-        (cond ((char-equal direction #\L) (setq head-pos (list (1- head-x) head-y)))
-              ((char-equal direction #\U) (setq head-pos (list head-x (1+ head-y))))
-              ((char-equal direction #\R) (setq head-pos (list (1+ head-x) head-y)))
-              ((char-equal direction #\D) (setq head-pos (list head-x (1- head-y)))))
-        (setq tail-pos (calculate-tail-move head-pos tail-pos))
-        (pushnew tail-pos visited-positions :test #'equal)))
+        (for (head-x head-y) = (first knot-positions))
+        (setf (nth 0 knot-positions)
+              (cond ((char-equal direction #\L) (list (1- head-x) head-y))
+                    ((char-equal direction #\U) (list head-x (1+ head-y)))
+                    ((char-equal direction #\R) (list (1+ head-x) head-y))
+                    ((char-equal direction #\D) (list head-x (1- head-y)))))
+        (iter
+          (for local-tail-index from 1 below (length knot-positions))
+          (for local-head-index first 0 then (1+ local-head-index))
+          (for local-head = (nth local-head-index knot-positions))
+          (for local-tail = (nth local-tail-index knot-positions))
+          (setf (nth local-tail-index knot-positions)
+                (calculate-tail-move local-head local-tail)))
+        (pushnew (car (last knot-positions)) visited-positions :test #'equal)))
     visited-positions))
-
-
-(defun compare-positions (pos1 pos2)
-  "Compare `pos1` to `pos2`.
-   Return true if and only if the first argument is strictly less
-   than the second (in some appropriate sense). If the first argument
-   is greater than or equal to the second (in the appropriate sense),
-   then return false."
-  (cond ((< (first pos1) (first pos2)) t)
-        ((> (first pos1) (first pos2)) NIL)
-        (t (< (second pos1) (second pos2)))))
-
-
-(defun position-list-equal-p (position-list1 position-list2)
-  "Return T if `position-list1` and `position-list2` are equal, else NIL.
-   `position-list1` and `position-list2` are lists of positions,
-   ((x1 y1) (x2 y2) ... (xn yn)), where x1..n and y1..n are integers."
-  (let ((sorted-positions1 (sort (copy-seq position-list1) #'compare-positions))
-        (sorted-positions2 (sort (copy-seq position-list2) #'compare-positions)))
-    (equal sorted-positions1 sorted-positions2)))
-
-
-(defun test-visited-positions (visited-positions)
-  "Test if `visited-positions` matches the test case in the puzzle.
-   Starting position s is lower left corner, at (0, 0).
-
-   ..##..   4
-   ...##.   3
-   .####.   2
-   ....#.   1
-   s###..   0
-
-   012345
-
-   Visited positions should then be (in (X Y)),
-   Y0: (0 0) (1 0) (2 0) (3 0)
-   Y1: (4 1)
-   Y2: (1 2) (2 2) (3 2) (4 2)
-   Y3: (3 3) (4 3)
-   Y4: (2 4) (3 4)"
-  (let ((test-case-positions '((0 0) (1 0) (2 0) (3 0)
-                               (4 1) (1 2) (2 2) (3 2)
-                               (4 2) (3 3) (4 3) (2 4)
-                               (3 4))))
-    (position-list-equal-p test-case-positions visited-positions)))
-
-
-(defun test-step-sequence ()
-  "Test if given step sequence generates visited position list given in puzzle
-   test case."
-  (let ((step-sequence '((#\R 4) (#\U 4) (#\L 3) (#\D 1)
-                          (#\R 4) (#\D 1) (#\L 5) (#\R 2))))
-    (test-visited-positions (walk-steps step-sequence))))
 
 
 (defun solve-part-1 (parsed-steps)
@@ -134,8 +106,7 @@
 
 (defun solve-part-2 (parsed-steps)
   "Solve part 2."
-  (declare (ignorable parsed-steps))
-  "Part 2 TBD.")
+  (length (walk-steps parsed-steps 10)))
 
 
 (defun main ()
