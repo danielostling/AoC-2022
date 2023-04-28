@@ -96,7 +96,8 @@
     ;(format t "Dimensions: ~a cols X ~a rows~%" cols rows)
     (let ((cave-grid (make-array (list cols rows)
                                  :element-type 'character
-                                 :initial-element #\.)))
+                                 :initial-element #\.
+                                 :adjustable t)))
         (iter
           (for rock-coordinate-set in rock-coordinate-sets)
           (iter
@@ -206,6 +207,22 @@
                       (leave (list cave-grid NIL)))))
         (setf sand-unit-position (list next-col next-row))))))
 
+(defun adjust-cave (cave)
+  "Add two rows and an 'infinite' floor for part 2 of problem."
+  (let* ((min-col (first cave))
+         (min-row (first cave))
+         (old-cave-grid (third cave))
+         (old-cave-grid-dims (array-dimensions old-cave-grid))
+         (old-cave-grid-rows (first old-cave-grid-dims))
+         (old-cave-grid-cols (second old-cave-grid-dims))
+         (new-cave-grid-cols (+ 50 old-cave-grid-cols))
+         (new-cave-grid-rows (+ 2 old-cave-grid-rows))
+         (new-cave-grid (adjust-array
+                         old-cave-grid
+                         `(,new-cave-grid-cols ,new-cave-grid-rows)
+                         :initial-element #\.)))
+    (list min-col min-row new-cave-grid)))
+
 
 (defun solve-part-1 (rock-structures)
   "Solve part 1."
@@ -226,15 +243,30 @@
 
 (defun solve-part-2 (rock-structures)
   "Solve part 2."
-  (declare (ignorable rock-structures))
-  "TBD")
+  (let* ((initial-cave (make-cave rock-structures))
+         (adjusted-cave (adjust-cave initial-cave))
+         (min-col (first adjusted-cave))
+         (min-row (second adjusted-cave))
+         (cave-grid (third adjusted-cave))
+         (after-sand-drop
+           (iter
+             (for sand-units initially 0 then (1+ sand-units))
+             (for next-state initially (list cave-grid nil) then (drop-sand cave-grid +sand-source+))
+             (when (second next-state)  ; first sand-unit to fall off.
+               (leave (list (first next-state) (1- sand-units)))))))
+    (format t "~a units of sand dropped before falling off.~%" (second after-sand-drop))
+    ;(format t "~a~%" (first after-sand-drop))
+    (format t "Dims: ~a~%" (array-dimensions cave-grid))
+    ;(print-cave (list min-col min-row (first after-sand-drop)))
+    (second after-sand-drop))
+
+  )
 
 
 (defun main ()
   "Solve part 1 and part 2 of AoC 2022 day 12."
-  (let* ((raw-input-data (get-input #P"./input"))
-         (rock-structures (parse-rock-structures raw-input-data))
-         )
+  (let* ((raw-input-data (get-input #P"./input-example"))
+         (rock-structures (parse-rock-structures raw-input-data)))
     (let ((part-1 (solve-part-1 rock-structures))
           (part-2 (solve-part-2 rock-structures)))
       (format t "First part: ~a~%" part-1)
