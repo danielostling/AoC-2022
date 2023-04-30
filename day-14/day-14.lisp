@@ -269,7 +269,7 @@
 
 
 (defun main ()
-  "Solve part 1 and part 2 of AoC 2022 day 12."
+  "Solve part 1 and part 2 of AoC 2022 day 14."
   (let* ((raw-input-data (get-input #P"./input"))
          (rock-structures (parse-rock-structures raw-input-data)))
     (let ((part-1 (solve-part-1 rock-structures))

@@ -141,7 +141,7 @@
 
 
 (defun main ()
-  "Solve part 1 and part 2 of AoC 2022 day 12."
+  "Solve part 1 and part 2 of AoC 2022 day 13."
   (let* ((raw-packet-data (get-input #P"./input"))
          (packet-data (parse-packet-data raw-packet-data)))
     (let ((part-1 (solve-part-1 packet-data))
