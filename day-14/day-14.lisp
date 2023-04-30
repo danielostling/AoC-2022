@@ -157,10 +157,10 @@
           outside array dimensions."
              (destructuring-bind (col row) pos
                (cond
-                 ((> 0 col) :outside)
-                 ((> 0 row) :outside)
-                 ((>= col max-col) :outside)
-                 ((>= row max-row) :outside)
+                 ((> 0 col) :outside)         ; Left of grid
+                 ((> 0 row) :outside)         ; Above grid
+                 ((>= col max-col) :outside)  ; Right of grid
+                 ((>= row max-row) :outside)  ; Below grid
                  (t (aref cave-grid col row)))))
            (get-next-position (current-pos cave-grid max-col max-row)
              "Figure out next position of sand unit based on `current-pos`
@@ -168,7 +168,8 @@
               tuple and `cave-grid` is the array describing the cave.
               Return list (next-pos state) where next-pos is a (col row)
               integer tuple and state is :fell-off if next-pos is outside
-              `cave-grid`, :at-rest if sand-unit is blocked to move further or
+              `cave-grid`, :at-rest if sand-unit is blocked to move further,
+              :at-source if sand-unit is at rest at same position as sand source or
               :in-motion if sand-unit has moved but remains inside `cave-grid`."
              (let* ((cur-col (first current-pos))
                     (cur-row (second current-pos))
@@ -189,7 +190,9 @@
                              (cond
                                ((equal val-down-right :outside) (list down-right :fell-off))
                                ((equal val-down-right #\.) (list down-right :in-motion))
-                               (t (list current-pos :at-rest))))))))))))
+                               (t (if (equal current-pos +sand-source+)
+                                      (list current-pos :at-source)
+                                      (list current-pos :at-rest)))))))))))))
     (let ((sand-unit-position sand-source)
           (cave-max-col (array-dimension cave-grid 0))
           (cave-max-row (array-dimension cave-grid 1)))
@@ -204,8 +207,10 @@
           (:fell-off (leave (list cave-grid T)))
           (:at-rest (progn
                       (setf (aref cave-grid cur-col cur-row) #\o)
-                      (leave (list cave-grid NIL)))))
+                      (leave (list cave-grid nil))))
+          (:at-source (leave (list cave-grid T))))
         (setf sand-unit-position (list next-col next-row))))))
+
 
 (defun adjust-cave (cave)
   "Add two rows and an 'infinite' floor for part 2 of problem."
@@ -213,14 +218,19 @@
          (min-row (first cave))
          (old-cave-grid (third cave))
          (old-cave-grid-dims (array-dimensions old-cave-grid))
-         (old-cave-grid-rows (first old-cave-grid-dims))
-         (old-cave-grid-cols (second old-cave-grid-dims))
-         (new-cave-grid-cols (+ 50 old-cave-grid-cols))
+         (old-cave-grid-cols (first old-cave-grid-dims))
+         (old-cave-grid-rows (second old-cave-grid-dims))
+         (new-cave-grid-cols (+ 150 old-cave-grid-cols))  ; 150 to simulate wide enough cave floor.
          (new-cave-grid-rows (+ 2 old-cave-grid-rows))
          (new-cave-grid (adjust-array
                          old-cave-grid
                          `(,new-cave-grid-cols ,new-cave-grid-rows)
                          :initial-element #\.)))
+    ;; Add a floor
+    (iter
+      (for row = (1- new-cave-grid-rows))
+      (for col from 0 below new-cave-grid-cols)
+      (setf (aref new-cave-grid col row) #\#))
     (list min-col min-row new-cave-grid)))
 
 
@@ -253,19 +263,14 @@
              (for sand-units initially 0 then (1+ sand-units))
              (for next-state initially (list cave-grid nil) then (drop-sand cave-grid +sand-source+))
              (when (second next-state)  ; first sand-unit to fall off.
-               (leave (list (first next-state) (1- sand-units)))))))
-    (format t "~a units of sand dropped before falling off.~%" (second after-sand-drop))
-    ;(format t "~a~%" (first after-sand-drop))
-    (format t "Dims: ~a~%" (array-dimensions cave-grid))
-    ;(print-cave (list min-col min-row (first after-sand-drop)))
-    (second after-sand-drop))
-
-  )
+               (leave (list (first next-state) sand-units))))))
+    (print-cave (list (- min-col 150) min-row (first after-sand-drop)))  ; 150 to adjust presentation of final cave.
+    (second after-sand-drop)))
 
 
 (defun main ()
   "Solve part 1 and part 2 of AoC 2022 day 12."
-  (let* ((raw-input-data (get-input #P"./input-example"))
+  (let* ((raw-input-data (get-input #P"./input"))
          (rock-structures (parse-rock-structures raw-input-data)))
     (let ((part-1 (solve-part-1 rock-structures))
           (part-2 (solve-part-2 rock-structures)))
