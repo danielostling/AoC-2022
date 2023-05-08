@@ -9,13 +9,13 @@
 
 (defun parse-sensors-and-beacons (raw-input-data)
   "Parse sensor and beacon coordinate and distance information from input data.
-   Return a list of lists; (sensor-x sensor-y beacon-x beacon-y), all integers.
+   Return a list of lists; (sensor-x sensor-y beacon-x beacon-y distance),
+   all integers.
    Turns line
      Sensor at x=2, y=18: closest beacon is at x=-2, y=15
    into
-     (2 18 -2 15)
+     (2 18 -2 15 7)
    as one element of result list."
-
   (iter
     (for line in raw-input-data)
     (for raw-parts = (rest (uiop:split-string line :separator '(#\= #\, #\:))))
@@ -23,7 +23,11 @@
     (for sensor-y = (parse-integer (third raw-parts)))
     (for beacon-x = (parse-integer (fifth raw-parts)))
     (for beacon-y = (parse-integer (seventh raw-parts)))
-    (collect (list sensor-x sensor-y beacon-x beacon-y))))
+    (collect
+        (list sensor-x sensor-y beacon-x beacon-y
+              (manhattan-distance
+               (list sensor-x sensor-y)
+               (list beacon-x beacon-y))))))
 
 
 (defun manhattan-distance (pos1 pos2)
@@ -36,87 +40,159 @@
     (- (second pos1) (second pos2)))))
 
 
-(defun make-map ()
-  "Simulate sparse 2D map using a hash table.
-   Use equal as test, as keys are '(x y) integers."
-  (make-hash-table :test #'equal))
+(defun square-sweep-dims (sensor distance)
+  "Given a `sensor` position, integer (x y) and an integer `distance` to
+   nearest beacon, return the -+distance square centered at `sensor` in
+   integer (min-x min-y max-x max-y) format."
+  (let* ((sensor-x (first sensor))
+         (sensor-y (second sensor))
+         (square-min-x (- sensor-x distance))
+         (square-min-y (- sensor-y distance))
+         (square-max-x (+ sensor-x distance))
+         (square-max-y (+ sensor-y distance)))
+  (list square-min-x square-min-y square-max-x square-max-y)))
 
 
-(defun initialize-map (map-hash sensors-and-beacons)
-  "Populate `map-hash` with sensor and beacon coordinates from
-  `sensors-and-beacons`. Modifies `map-hash` destructively."
+(defun quick-covered-point (point sensor distance)
+  "Do a square shaped quick-test to rule out sensors 'far' from point.
+   `point` is an integer (x y) coordinate to test,
+   `sensor` is an integer (x y) sensor coordinate to compare to, and
+   `distance` is the manhattan distance between `sensor` and its closest beacon.
+   Return T if point is inside the test square, or NIL otherwise."
+  (let* ((point-x (first point))
+         (point-y (second point)))
+    (destructuring-bind
+        (square-min-x square-min-y square-max-x square-max-y)
+        (square-sweep-dims sensor distance)
+      (and
+       (>= point-x square-min-x)
+       (>= point-y square-min-y)
+       (<= point-x square-max-x)
+       (<= point-y square-max-y)))))
+
+
+(defun covered-point (point sensors-beacons-distances)
+  "Test if integer pair (x y) `point` is inside any of the sensor sweep areas
+   described by `sensors-beacons-distances`, a list of integer lists
+   (sensor-x sensor-y beacon-x beacon-y distance). Distance is manhattan
+   distance between sensor and beacon. Return T if inside, otherwise NIL."
+  (iter
+    (for (sensor-x sensor-y nil nil distance) in sensors-beacons-distances)
+    (when (quick-covered-point point (list sensor-x sensor-y) distance)
+      (for distance-to-point = (manhattan-distance
+                                point (list sensor-x sensor-y)))
+      (when (>= distance distance-to-point)
+        (leave t)))))
+
+
+(defun has-beacon-or-sensor (point sensors-beacons-distances)
+  "Return B if point is a beacon, S if point is a sensor, else NIL."
+  (let ((point-x (first point))
+        (point-y (second point)))
+    (iter
+      (for (sensor-x sensor-y beacon-x beacon-y nil) in sensors-beacons-distances)
+      (when (and (= point-x sensor-x) (= point-y sensor-y))
+        (leave #\S))
+      (when (and (= point-x beacon-x) (= point-y beacon-y))
+        (leave #\B)))))
+
+
+(defun grid-dimensions (sensors-beacons-distances)
+  "Calculate grid dimensions by locating outermost sensors and beacons in
+   `sensors-beacons-distances`. Additionally, consider max sensor sweep area
+   reaching outside edge beacons. Return (min-x min-y max-x max-y), all integers."
+  (let ((min-x 0)
+        (min-y 0)
+        (max-x 0)
+        (max-y 0))
+    (iter
+      (for (sensor-x sensor-y beacon-x beacon-y distance) in sensors-beacons-distances)
+      (for (sweep-min-x sweep-min-y sweep-max-x sweep-max-y) = (square-sweep-dims (list sensor-x sensor-y) distance))
+      (minimizing (min sensor-x beacon-x sweep-min-x) into grid-min-x)
+      (minimizing (min sensor-y beacon-y sweep-min-y) into grid-min-y)
+      (maximizing (max sensor-x beacon-x sweep-max-x) into grid-max-x)
+      (maximizing (max sensor-y beacon-y sweep-max-y) into grid-max-y)
+      (finally
+       (progn
+         (setf min-x grid-min-x)
+         (setf min-y grid-min-y)
+         (setf max-x grid-max-x)
+         (setf max-y grid-max-y))))
+    (list min-x min-y max-x max-y)))
+
+
+(defun calculate-distance (sensors-and-beacons)
+  "Given a list of integer lists (sensor-x sensor-y beacon-x beacon-y)
+   described by `sensors-and-beacons`, add the integer manhattan distance as
+   last element in each sensor and beacon coordinate list and return it."
   (iter
     (for (sensor-x sensor-y beacon-x beacon-y) in sensors-and-beacons)
-    (setf (gethash `(,sensor-x ,sensor-y) map-hash) #\S)
-    (setf (gethash `(,beacon-x ,beacon-y) map-hash) #\B)))
+    (collect (list
+              sensor-x sensor-y
+              beacon-x beacon-y
+              (manhattan-distance
+               (list sensor-x sensor-y)
+               (list beacon-x beacon-y))))))
 
 
-(defun map-dimensions (map-hash)
-  "Return (min-x min-y max-x max-y map-hash)."
-  (iter
-    (for (key nil) in-hashtable map-hash)
-    (for (x y) = key)
-    (minimizing x into min-x)
-    (minimizing y into min-y)
-    (maximizing x into max-x)
-    (maximizing y into max-y)
-    (finally
-     (return (list min-x min-y max-x max-y map-hash)))))
-
-
-(defun mark (map-hash sensor beacon)
-  "Mark sensor coverage between `sensor` and `beacon` in `map-hash`.
-   `sensor` and `beacon` are (x y) integer positions in `map-hash`.
-   Updates `map-hash.`. NOTE: This is a brute force approach to test if a
-   position is in range or not."
-  (let ((distance (manhattan-distance sensor beacon))
-        (sensor-x (first sensor))
-        (sensor-y (second sensor)))
+(defun sensor-coverage (row sensors-beacons-distances)
+  "Return how many coordinates there are in `row` which has sensor coverage."
+  (let* ((covered 0)
+         (dimensions (grid-dimensions sensors-beacons-distances))
+         (min-x (first dimensions))
+         (max-x (third dimensions)))
     (iter
-      (for y from (- sensor-y distance) to (+ sensor-y distance))
-      (iter
-        (for x from (- sensor-x distance) to (+ sensor-x distance))
-        (when (and (<= (manhattan-distance sensor `(,x ,y)) distance)
-                   (equal (gethash `(,x ,y) map-hash #\.) #\.))
-          (setf (gethash `(,x ,y) map-hash) #\#))))))
+      (for x from min-x to max-x)
+      (for beacon-sensor = (has-beacon-or-sensor
+                            (list x row) sensors-beacons-distances))
+      (when beacon-sensor
+        (format t "Beacon or sensor at ~a, ~a~%" x row)
+        (next-iteration))
+      (when (covered-point (list x row) sensors-beacons-distances)
+          (incf covered)))
+    covered))
 
 
-(defun print-map (map-data)
-  "Draw the map using `map-data` which is a list
-   (min-x min-y max-x may-y map-hash) where
-   min-{x,y} and max {x,y} are coordinate limits for the grid, and
-   map-hash is a map hash table."
-  (destructuring-bind (min-x min-y max-x max-y map-hash) map-data
-    (iter
-      (for y from min-y to max-y)
-      (iter
-        (for x from min-x to max-x)
-        (for value = (gethash `(,x ,y) map-hash #\.))
-        (format t "~a" value))
-      (format t "~%"))))
-
-
-(defun marks-per-row (map-hash row)
-  "Return mark count in `map-hash` at `row`."
+(defun rescale-sensors-beacons-distances (factor sensors-beacons-distances)
+  "Rescale sensors and beacons in `sensors-beacons-distances `by `factor`,
+   then recalculate distance, and return rescaled data structure."
   (iter
-    (for (key val) in-hashtable map-hash)
-    (for (nil y) = key)
-    (when (= y row)
-      (counting (equal val #\#) into marks))
-    (finally (return marks))))
+    (for (sensor-x sensor-y beacon-x beacon-y nil) in sensors-beacons-distances)
+    (for rescaled-sensor-x = (round (/ sensor-x factor)))
+    (for rescaled-sensor-y = (round (/ sensor-y factor)))
+    (for rescaled-beacon-x = (round (/ beacon-x factor)))
+    (for rescaled-beacon-y = (round (/ beacon-y factor)))
+    (for rescaled-sensor = (list rescaled-sensor-x rescaled-sensor-y))
+    (for rescaled-beacon = (list rescaled-beacon-x rescaled-beacon-y))
+    (collect (list rescaled-sensor-x rescaled-sensor-y
+                   rescaled-beacon-x rescaled-beacon-y
+                   (manhattan-distance
+                    rescaled-sensor
+                    rescaled-beacon)))))
 
 
-(defun solve-part-1 (sensors-and-beacons row)
+(defun draw-map (sensors-beacons-distances &optional (scale 10000))
+  "Draw the map!"
+  (let ((rescaled-sensors-beacons (rescale-sensors-beacons-distances
+                                   scale
+                                   sensors-beacons-distances)))
+    (destructuring-bind (min-x min-y max-x max-y) (grid-dimensions rescaled-sensors-beacons)
+      (format t "Dims; at scale 1:~a, cols ~a -> ~a, rows ~a -> ~a~%"
+              scale min-x max-x min-y max-y)
+      (iter
+        (for y from min-y to max-y)
+        (iter
+          (for x from min-x to max-x)
+          (for s-or-b = (has-beacon-or-sensor (list x y) rescaled-sensors-beacons))
+          (if s-or-b
+              (format t "~a " s-or-b)
+              (format t ". ")))
+        (format t "~%")))))
+
+
+(defun solve-part-1 (sensors-beacons-distances row)
   "Solve part 1."
-  (let ((map-hash (make-map)))
-    (initialize-map map-hash sensors-and-beacons)
-    (iter
-      (for (sensor-x sensor-y beacon-x beacon-y) in sensors-and-beacons)
-      (mark map-hash `(,sensor-x ,sensor-y) `(,beacon-x ,beacon-y)))
-                                        ; (print-map (map-dimensions map-hash))
-    (let ((marks (marks-per-row map-hash row)))
-      (format t "Row ~a has ~a marks.~%" row marks)
-      marks)))
+  (sensor-coverage row sensors-beacons-distances))
 
 
 (defun solve-part-2 (sensors-and-beacons)
