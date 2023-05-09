@@ -40,63 +40,6 @@
     (- (second pos1) (second pos2)))))
 
 
-(defun square-sweep-dims (sensor distance)
-  "Given a `sensor` position, integer (x y) and an integer `distance` to
-   nearest beacon, return the -+distance square centered at `sensor` in
-   integer (min-x min-y max-x max-y) format."
-  (let* ((sensor-x (first sensor))
-         (sensor-y (second sensor))
-         (square-min-x (- sensor-x distance))
-         (square-min-y (- sensor-y distance))
-         (square-max-x (+ sensor-x distance))
-         (square-max-y (+ sensor-y distance)))
-  (list square-min-x square-min-y square-max-x square-max-y)))
-
-
-(defun quick-covered-point (point sensor distance)
-  "Do a square shaped quick-test to rule out sensors 'far' from point.
-   `point` is an integer (x y) coordinate to test,
-   `sensor` is an integer (x y) sensor coordinate to compare to, and
-   `distance` is the manhattan distance between `sensor` and its closest beacon.
-   Return T if point is inside the test square, or NIL otherwise."
-  (let* ((point-x (first point))
-         (point-y (second point)))
-    (destructuring-bind
-        (square-min-x square-min-y square-max-x square-max-y)
-        (square-sweep-dims sensor distance)
-      (and
-       (>= point-x square-min-x)
-       (>= point-y square-min-y)
-       (<= point-x square-max-x)
-       (<= point-y square-max-y)))))
-
-
-(defun covered-point (point sensors-beacons-distances)
-  "Test if integer pair (x y) `point` is inside any of the sensor sweep areas
-   described by `sensors-beacons-distances`, a list of integer lists
-   (sensor-x sensor-y beacon-x beacon-y distance). Distance is manhattan
-   distance between sensor and beacon. Return T if inside, otherwise NIL."
-  (iter
-    (for (sensor-x sensor-y nil nil distance) in sensors-beacons-distances)
-    (when (quick-covered-point point (list sensor-x sensor-y) distance)
-      (for distance-to-point = (manhattan-distance
-                                point (list sensor-x sensor-y)))
-      (when (>= distance distance-to-point)
-        (leave t)))))
-
-
-(defun has-beacon-or-sensor (point sensors-beacons-distances)
-  "Return B if point is a beacon, S if point is a sensor, else NIL."
-  (let ((point-x (first point))
-        (point-y (second point)))
-    (iter
-      (for (sensor-x sensor-y beacon-x beacon-y nil) in sensors-beacons-distances)
-      (when (and (= point-x sensor-x) (= point-y sensor-y))
-        (leave #\S))
-      (when (and (= point-x beacon-x) (= point-y beacon-y))
-        (leave #\B)))))
-
-
 (defun grid-dimensions (sensors-beacons-distances)
   "Calculate grid dimensions by locating outermost sensors and beacons in
    `sensors-beacons-distances`. Additionally, consider max sensor sweep area
@@ -121,91 +64,136 @@
     (list min-x min-y max-x max-y)))
 
 
-(defun calculate-distance (sensors-and-beacons)
-  "Given a list of integer lists (sensor-x sensor-y beacon-x beacon-y)
-   described by `sensors-and-beacons`, add the integer manhattan distance as
-   last element in each sensor and beacon coordinate list and return it."
-  (iter
-    (for (sensor-x sensor-y beacon-x beacon-y) in sensors-and-beacons)
-    (collect (list
-              sensor-x sensor-y
-              beacon-x beacon-y
-              (manhattan-distance
-               (list sensor-x sensor-y)
-               (list beacon-x beacon-y))))))
+(defun has-beacon-or-sensor (point sensors-beacons-distances)
+  "Return B if point is a beacon, S if point is a sensor, else NIL."
+  (let ((point-x (first point))
+        (point-y (second point)))
+    (iter
+      (for (sensor-x sensor-y beacon-x beacon-y nil) in sensors-beacons-distances)
+      (when (and (= point-x sensor-x) (= point-y sensor-y))
+        (leave #\S))
+      (when (and (= point-x beacon-x) (= point-y beacon-y))
+        (leave #\B)))))
 
 
-(defun sensor-coverage (row sensors-beacons-distances)
-  "Return how many coordinates there are in `row` which has sensor coverage."
-  (let* ((covered 0)
-         (dimensions (grid-dimensions sensors-beacons-distances))
-         (min-x (first dimensions))
-         (max-x (third dimensions)))
+(defun circle-line-intersection (y sensor distance)
+  "Given line, described by a horizontal line at `y` and a circle described by
+   integer (x y) coordinates in `sensor` and its manhattan distance radius
+   `distance`, return one of three cases;
+   1) Line does not intersect circle => nil,
+   2) Line touches circle edge => (touching-x-coordinate touching-x-coordinate),
+   or
+   3) Line intersects circle at two points => (left-x right-x) (line is horizontal)
+
+   However. This problem deals with 'circles' described by manhattan distance,
+   simplifying the problem of determining intersection points."
+
+  (destructuring-bind (sensor-x sensor-y) sensor
+    (let ((sensor-to-line (abs (- sensor-y y))))
+      (cond
+        ((> sensor-to-line distance) nil)  ; Case 1
+        ((= sensor-to-line distance) (list sensor-x sensor-x))  ; Case 2
+        (t  ; Case 3
+         (let* ((remaining-horizontal-distance (- distance sensor-to-line))
+                (left-x (- sensor-x remaining-horizontal-distance))
+                (right-x (+ sensor-x remaining-horizontal-distance)))
+           (list left-x right-x)))))))
+
+
+(defun smallest-first (s1 s2)
+  "Sort segments `s1` and `s2` so that smaller first x comes first.
+   If first x are identical, smallest second x comes first."
+  (let ((left-s1 (first s1))
+        (right-s1 (second s1))
+        (left-s2 (first s2))
+        (right-s2 (second s2)))
+    (cond
+      ((= left-s1 left-s2) (< right-s1 right-s2))
+      (t (< left-s1 left-s2)))))
+
+
+(defun row-coverage-segments (row sensors-beacons-distances)
+  "Given `row` and sensors, beacons and distances in `sensors-beacons-distances`,
+  return a list of sensor covered parts of the row as a list of lists, where
+  each list element is an integer pair (left-x right-x) describing the covered
+  segment. If a sensor sweep just touches the row, left-x and right-y are
+  identical. If no sensors reach the row, return nil."
+  (let ((segments
+          (iter
+            (for (sensor-x sensor-y nil nil distance) in sensors-beacons-distances)
+            (for coverage-segment = (circle-line-intersection row (list sensor-x sensor-y) distance))
+            (when coverage-segment
+              (collect coverage-segment)))))
+    (sort segments #'smallest-first)))
+
+
+(defun count-sensor-coverage (min-x max-x row sensors-beacons-distances)
+  "Considering a `row` from `min-x` to `max-x`, count sensor coverage."
+  (let ((count 0)
+        (segments (row-coverage-segments row sensors-beacons-distances)))
     (iter
       (for x from min-x to max-x)
-      (for beacon-sensor = (has-beacon-or-sensor
-                            (list x row) sensors-beacons-distances))
-      (when beacon-sensor
-        (format t "Beacon or sensor at ~a, ~a~%" x row)
-        (next-iteration))
-      (when (covered-point (list x row) sensors-beacons-distances)
-          (incf covered)))
-    covered))
-
-
-(defun rescale-sensors-beacons-distances (factor sensors-beacons-distances)
-  "Rescale sensors and beacons in `sensors-beacons-distances `by `factor`,
-   then recalculate distance, and return rescaled data structure."
-  (iter
-    (for (sensor-x sensor-y beacon-x beacon-y nil) in sensors-beacons-distances)
-    (for rescaled-sensor-x = (round (/ sensor-x factor)))
-    (for rescaled-sensor-y = (round (/ sensor-y factor)))
-    (for rescaled-beacon-x = (round (/ beacon-x factor)))
-    (for rescaled-beacon-y = (round (/ beacon-y factor)))
-    (for rescaled-sensor = (list rescaled-sensor-x rescaled-sensor-y))
-    (for rescaled-beacon = (list rescaled-beacon-x rescaled-beacon-y))
-    (collect (list rescaled-sensor-x rescaled-sensor-y
-                   rescaled-beacon-x rescaled-beacon-y
-                   (manhattan-distance
-                    rescaled-sensor
-                    rescaled-beacon)))))
-
-
-(defun draw-map (sensors-beacons-distances &optional (scale 10000))
-  "Draw the map!"
-  (let ((rescaled-sensors-beacons (rescale-sensors-beacons-distances
-                                   scale
-                                   sensors-beacons-distances)))
-    (destructuring-bind (min-x min-y max-x max-y) (grid-dimensions rescaled-sensors-beacons)
-      (format t "Dims; at scale 1:~a, cols ~a -> ~a, rows ~a -> ~a~%"
-              scale min-x max-x min-y max-y)
       (iter
-        (for y from min-y to max-y)
-        (iter
-          (for x from min-x to max-x)
-          (for s-or-b = (has-beacon-or-sensor (list x y) rescaled-sensors-beacons))
-          (if s-or-b
-              (format t "~a " s-or-b)
-              (format t ". ")))
-        (format t "~%")))))
+        (for (left-x right-x) in segments)
+        (when (and
+               (>= x left-x)
+               (<= x right-x)
+               (not (has-beacon-or-sensor (list x row) sensors-beacons-distances)))
+          (incf count)
+          (leave))))
+    count))
+
+
+(defun find-gap (row min-x max-x sensors-beacons-distances)
+  "Return integer (x y) position of point with no sensor coverage or NIL if
+   `row` has no such position."
+  (let ((segments (row-coverage-segments row sensors-beacons-distances))
+        (x-pos min-x)
+        (segment-found nil))
+    (iter
+      (when (>= x-pos max-x)
+        ;(format t "X-pos ~a is >= max-x ~a, row done~%" x-pos max-x)
+        (leave nil))
+      (setf segment-found nil)
+      (iter
+        (for (left-x right-x) in segments)
+        (when (and
+               (>= x-pos left-x)
+               (< x-pos right-x))
+          (setf x-pos right-x)
+          (setf segment-found t)))
+      (when (null segment-found)
+        (format t "Found segment gap in row ~a at x-pos ~a~%" row x-pos)
+        (leave (list x-pos row)))
+      (incf x-pos))))
 
 
 (defun solve-part-1 (sensors-beacons-distances row)
   "Solve part 1."
-  (sensor-coverage row sensors-beacons-distances))
+  (let* ((grid-dims (grid-dimensions sensors-beacons-distances))
+         (grid-min-x (first grid-dims))
+         (grid-max-x (third grid-dims)))
+    (count-sensor-coverage grid-min-x grid-max-x row sensors-beacons-distances)))
 
 
-(defun solve-part-2 (sensors-and-beacons)
+(defun solve-part-2 (sensors-beacons-distances min-x min-y max-x max-y)
   "Solve part 2."
-  (declare (ignorable sensors-and-beacons))
-  "TBD")
+  (let* ((distress-beacon-point
+         (iter
+           (for row from min-y to max-y)
+           (for distress-beacon = (find-gap row min-x max-x sensors-beacons-distances))
+           (when distress-beacon
+             (leave distress-beacon))))
+         (beacon-x (first distress-beacon-point))
+         (beacon-y (second distress-beacon-point)))
+    (+ (* beacon-x 4000000) beacon-y)))
 
 
 (defun main ()
   "Solve part 1 and part 2 of AoC 2022 day 15."
   (let* ((raw-input-data (get-input #P"./input"))
-         (sensors-and-beacons (parse-sensors-and-beacons raw-input-data)))
-    (let ((part-1 (solve-part-1 sensors-and-beacons 2000000))
-          (part-2 (solve-part-2 sensors-and-beacons)))
+         (sensors-beacons-distances (parse-sensors-and-beacons raw-input-data)))
+    (let ((part-1 (solve-part-1 sensors-beacons-distances 2000000))
+          (part-2 (solve-part-2 sensors-beacons-distances 0 0 4000000 4000000)))
       (format t "First part: ~a~%" part-1)
       (format t "Second part: ~a~%" part-2))))
